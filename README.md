@@ -1,8 +1,6 @@
 # lp-crm-api
 
 [![npm version](https://img.shields.io/npm/v/lp-crm-api.svg)](https://www.npmjs.com/package/lp-crm-api)
-[![npm downloads](https://img.shields.io/npm/dm/lp-crm-api.svg)](https://www.npmjs.com/package/lp-crm-api)
-[![CI](https://github.com/dannychirkov/lp-crm-api/actions/workflows/ci.yml/badge.svg)](https://github.com/dannychirkov/lp-crm-api/actions/workflows/ci.yml)
 [![License](https://img.shields.io/npm/l/lp-crm-api.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-ready-3178c6.svg)](https://www.typescriptlang.org/)
