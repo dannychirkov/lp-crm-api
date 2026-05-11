@@ -1,0 +1,56 @@
+{
+  "name": "lp-crm-api",
+  "version": "0.1.0",
+  "description": "Read-only LP-CRM API client and MCP server",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "lp-crm-mcp": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "Apache-2.0",
+  "author": "Danny Chirkov",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dannychirkov/lp-crm-api.git"
+  },
+  "homepage": "https://github.com/dannychirkov/lp-crm-api#readme",
+  "bugs": {
+    "url": "https://github.com/dannychirkov/lp-crm-api/issues"
+  },
+  "keywords": [
+    "lp-crm",
+    "crm",
+    "api",
+    "mcp",
+    "model-context-protocol",
+    "typescript",
+    "readonly"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "test": "tsx --test test/**/*.test.ts",
+    "type-check": "tsc --noEmit",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "prepublishOnly": "npm run clean && npm test && npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "rimraf": "^5.0.5",
+    "tsx": "^4.19.4",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
