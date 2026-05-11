@@ -13,6 +13,9 @@ export function createServer(config: ServerConfig): Server {
   const client = createLpCrmClient({
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
+    maxRetries: config.maxRetries,
+    minRequestIntervalMs: config.minRequestIntervalMs,
+    retryDelayMs: config.retryDelayMs,
   });
 
   const server = new Server(

@@ -130,3 +130,66 @@ test('throws on non-JSON responses', async () => {
 
   await assert.rejects(() => client.getStatuses(), /non-JSON response/);
 });
+
+test('retries HTTP 429 responses before surfacing an error', async () => {
+  let calls = 0;
+  const fetchImpl = async (): Promise<Response> => {
+    calls += 1;
+
+    if (calls === 1) {
+      return new Response('<html>too many requests</html>', {
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+
+    return new Response(JSON.stringify({ status: 'ok', data: { '1': 'Прийнятий' } }), {
+      status: 200,
+      statusText: 'OK',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  const client = createLpCrmClient({
+    baseUrl: 'https://example.lp-crm.biz',
+    apiKey: 'secret',
+    fetch: fetchImpl as typeof fetch,
+    maxRetries: 1,
+    retryDelayMs: 0,
+  });
+
+  const result = await client.getStatuses();
+
+  assert.equal(calls, 2);
+  assert.equal(result.status, 'ok');
+});
+
+test('queues concurrent requests from one client instance', async () => {
+  let activeRequests = 0;
+  let maxActiveRequests = 0;
+  const fetchImpl = async (): Promise<Response> => {
+    activeRequests += 1;
+    maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 5);
+    });
+
+    activeRequests -= 1;
+
+    return new Response(JSON.stringify({ status: 'ok', data: { '1': 'Прийнятий' } }), {
+      status: 200,
+      statusText: 'OK',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  const client = createLpCrmClient({
+    baseUrl: 'https://example.lp-crm.biz',
+    apiKey: 'secret',
+    fetch: fetchImpl as typeof fetch,
+  });
+
+  await Promise.all([client.getStatuses(), client.getStatuses(), client.getStatuses()]);
+
+  assert.equal(maxActiveRequests, 1);
+});
