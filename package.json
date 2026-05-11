@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "lp-crm-mcp": "./dist/cli/index.js"
+    "lp-crm-mcp": "dist/cli/index.js"
   },
   "files": [
     "dist",
@@ -17,7 +17,7 @@
   "author": "Danny Chirkov",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dannychirkov/lp-crm-api.git"
+    "url": "git+https://github.com/dannychirkov/lp-crm-api.git"
   },
   "homepage": "https://github.com/dannychirkov/lp-crm-api#readme",
   "bugs": {
