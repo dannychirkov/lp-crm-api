@@ -7,6 +7,16 @@ export interface ServerConfig {
   readonly retryDelayMs?: number;
 }
 
+export interface NormalizedServerConfig extends ServerConfig {
+  readonly minRequestIntervalMs: number;
+  readonly maxRetries: number;
+  readonly retryDelayMs: number;
+}
+
+const DEFAULT_MIN_REQUEST_INTERVAL_MS = 1000;
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_RETRY_DELAY_MS = 2000;
+
 function readNonNegativeInteger(name: string, defaultValue: number): number {
   const value = process.env[name];
   if (value === undefined || value === '') {
@@ -35,9 +45,12 @@ export function loadConfig(): ServerConfig {
   const apiKey = process.env.LPCRM_API_KEY;
   const baseUrl = process.env.LPCRM_BASE_URL;
   const logLevel = (process.env.LOG_LEVEL || 'info') as ServerConfig['logLevel'];
-  const minRequestIntervalMs = readNonNegativeInteger('LPCRM_MIN_REQUEST_INTERVAL_MS', 1000);
-  const maxRetries = readNonNegativeInteger('LPCRM_MAX_RETRIES', 2);
-  const retryDelayMs = readNonNegativeInteger('LPCRM_RETRY_DELAY_MS', 2000);
+  const minRequestIntervalMs = readNonNegativeInteger(
+    'LPCRM_MIN_REQUEST_INTERVAL_MS',
+    DEFAULT_MIN_REQUEST_INTERVAL_MS
+  );
+  const maxRetries = readNonNegativeInteger('LPCRM_MAX_RETRIES', DEFAULT_MAX_RETRIES);
+  const retryDelayMs = readNonNegativeInteger('LPCRM_RETRY_DELAY_MS', DEFAULT_RETRY_DELAY_MS);
 
   if (!apiKey) {
     throw new Error('LPCRM_API_KEY environment variable is required');
@@ -54,6 +67,15 @@ export function loadConfig(): ServerConfig {
     minRequestIntervalMs,
     maxRetries,
     retryDelayMs,
+  };
+}
+
+export function normalizeConfig(config: ServerConfig): NormalizedServerConfig {
+  return {
+    ...config,
+    minRequestIntervalMs: config.minRequestIntervalMs ?? DEFAULT_MIN_REQUEST_INTERVAL_MS,
+    maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
+    retryDelayMs: config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS,
   };
 }
 

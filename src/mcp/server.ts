@@ -2,20 +2,21 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { createLpCrmClient } from '../client.js';
-import { loadConfig, validateConfig, type ServerConfig } from '../config.js';
+import { loadConfig, normalizeConfig, validateConfig, type ServerConfig } from '../config.js';
 import { logger, setLogLevel } from '../logger.js';
 import { handleLpCrmTool, lpCrmTools } from './tools.js';
 
 export function createServer(config: ServerConfig): Server {
-  validateConfig(config);
-  setLogLevel(config.logLevel);
+  const normalizedConfig = normalizeConfig(config);
+  validateConfig(normalizedConfig);
+  setLogLevel(normalizedConfig.logLevel);
 
   const client = createLpCrmClient({
-    apiKey: config.apiKey,
-    baseUrl: config.baseUrl,
-    maxRetries: config.maxRetries,
-    minRequestIntervalMs: config.minRequestIntervalMs,
-    retryDelayMs: config.retryDelayMs,
+    apiKey: normalizedConfig.apiKey,
+    baseUrl: normalizedConfig.baseUrl,
+    maxRetries: normalizedConfig.maxRetries,
+    minRequestIntervalMs: normalizedConfig.minRequestIntervalMs,
+    retryDelayMs: normalizedConfig.retryDelayMs,
   });
 
   const server = new Server(
