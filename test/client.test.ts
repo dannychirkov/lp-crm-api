@@ -91,6 +91,7 @@ test('sends product status_ignore as 1 or 0', async () => {
     baseUrl: 'https://example.lp-crm.biz',
     apiKey: 'secret',
     fetch,
+    minRequestIntervalMs: 0,
   });
 
   await client.getProductsById({ productIds: [45, 46], statusIgnore: true });
@@ -154,8 +155,44 @@ test('retries HTTP 429 responses before surfacing an error', async () => {
     baseUrl: 'https://example.lp-crm.biz',
     apiKey: 'secret',
     fetch: fetchImpl as typeof fetch,
+    minRequestIntervalMs: 0,
     maxRetries: 1,
     retryDelayMs: 0,
+  });
+
+  const result = await client.getStatuses();
+
+  assert.equal(calls, 2);
+  assert.equal(result.status, 'ok');
+});
+
+test('uses retry defaults for direct client construction', async () => {
+  let calls = 0;
+  const fetchImpl = async (): Promise<Response> => {
+    calls += 1;
+
+    if (calls === 1) {
+      return new Response('<html>too many requests</html>', {
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: {
+          'Content-Type': 'text/html',
+          'Retry-After': '0',
+        },
+      });
+    }
+
+    return new Response(JSON.stringify({ status: 'ok', data: { '1': 'Прийнятий' } }), {
+      status: 200,
+      statusText: 'OK',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  const client = createLpCrmClient({
+    baseUrl: 'https://example.lp-crm.biz',
+    apiKey: 'secret',
+    fetch: fetchImpl as typeof fetch,
+    minRequestIntervalMs: 0,
   });
 
   const result = await client.getStatuses();
@@ -187,6 +224,7 @@ test('queues concurrent requests from one client instance', async () => {
     baseUrl: 'https://example.lp-crm.biz',
     apiKey: 'secret',
     fetch: fetchImpl as typeof fetch,
+    minRequestIntervalMs: 0,
   });
 
   await Promise.all([client.getStatuses(), client.getStatuses(), client.getStatuses()]);

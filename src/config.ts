@@ -1,3 +1,9 @@
+import {
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_MIN_REQUEST_INTERVAL_MS,
+  DEFAULT_RETRY_DELAY_MS,
+} from './defaults.js';
+
 export interface ServerConfig {
   readonly apiKey: string;
   readonly baseUrl: string;
@@ -12,10 +18,6 @@ export interface NormalizedServerConfig extends ServerConfig {
   readonly maxRetries: number;
   readonly retryDelayMs: number;
 }
-
-const DEFAULT_MIN_REQUEST_INTERVAL_MS = 1000;
-const DEFAULT_MAX_RETRIES = 2;
-const DEFAULT_RETRY_DELAY_MS = 2000;
 
 function readNonNegativeInteger(name: string, defaultValue: number): number {
   const value = process.env[name];

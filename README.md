@@ -112,6 +112,8 @@ const orderIds = await client.getOrderIdsByStatus({ status: 3 });
 const orders = await client.getOrdersById(orderIds.data?.slice(0, 10) ?? []);
 ```
 
+Direct client instances use the same retry and rate-limit defaults as the MCP server. Pass `minRequestIntervalMs`, `maxRetries`, or `retryDelayMs` to tune them; `0` disables the corresponding delay or retry count.
+
 ## Tools
 
 ### `lpcrm_get_statuses`

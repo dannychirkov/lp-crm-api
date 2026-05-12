@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeConfig } from '../src/config.js';
+import {
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_MIN_REQUEST_INTERVAL_MS,
+  DEFAULT_RETRY_DELAY_MS,
+} from '../src/defaults.js';
 
 test('normalizes MCP retry and rate-limit defaults', () => {
   const config = normalizeConfig({
@@ -9,9 +14,9 @@ test('normalizes MCP retry and rate-limit defaults', () => {
     logLevel: 'info',
   });
 
-  assert.equal(config.minRequestIntervalMs, 1000);
-  assert.equal(config.maxRetries, 2);
-  assert.equal(config.retryDelayMs, 2000);
+  assert.equal(config.minRequestIntervalMs, DEFAULT_MIN_REQUEST_INTERVAL_MS);
+  assert.equal(config.maxRetries, DEFAULT_MAX_RETRIES);
+  assert.equal(config.retryDelayMs, DEFAULT_RETRY_DELAY_MS);
 });
 
 test('preserves explicit zero retry and rate-limit settings', () => {

@@ -1,3 +1,8 @@
+import {
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_MIN_REQUEST_INTERVAL_MS,
+  DEFAULT_RETRY_DELAY_MS,
+} from './defaults.js';
 import { LpCrmApiError, LpCrmNetworkError } from './errors.js';
 import type {
   GetProductsByIdParams,
@@ -107,9 +112,9 @@ export class LpCrmClient {
     this.apiKey = config.apiKey;
     this.fetchFn = config.fetch ?? fetch;
     this.timeout = config.timeout ?? 30000;
-    this.minRequestIntervalMs = config.minRequestIntervalMs ?? 0;
-    this.maxRetries = config.maxRetries ?? 0;
-    this.retryDelayMs = config.retryDelayMs ?? 1000;
+    this.minRequestIntervalMs = config.minRequestIntervalMs ?? DEFAULT_MIN_REQUEST_INTERVAL_MS;
+    this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
+    this.retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   }
 
   async getStatuses(): Promise<LpCrmSuccessResponse<Record<string, string>>> {

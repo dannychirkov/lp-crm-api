@@ -1,0 +1,3 @@
+export const DEFAULT_MIN_REQUEST_INTERVAL_MS = 1000;
+export const DEFAULT_MAX_RETRIES = 2;
+export const DEFAULT_RETRY_DELAY_MS = 2000;
