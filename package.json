@@ -1,6 +1,6 @@
 {
   "name": "lp-crm-api",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Read-only LP-CRM API client and MCP server",
   "type": "module",
   "main": "dist/index.js",
