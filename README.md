@@ -52,9 +52,14 @@ lp-crm-mcp
 | --- | --- | --- |
 | `LPCRM_BASE_URL` | Yes | LP-CRM cabinet URL, for example `https://example.lp-crm.biz` |
 | `LPCRM_API_KEY` | Yes | Outgoing/read API key |
+| `LPCRM_MIN_REQUEST_INTERVAL_MS` | No | Minimum delay between LP-CRM requests from one MCP process; default is `1000` |
+| `LPCRM_MAX_RETRIES` | No | Number of retries for LP-CRM HTTP `429` responses; default is `2` |
+| `LPCRM_RETRY_DELAY_MS` | No | Retry delay when LP-CRM omits `Retry-After`; default is `2000` |
 | `LOG_LEVEL` | No | `debug`, `info`, `warn`, or `error`; default is `info` |
 
 The API key is sent as the LP-CRM `key` form parameter. Do not commit real keys into your repository.
+
+The MCP server serializes LP-CRM requests from one process. If LP-CRM returns HTTP `429`, the client retries after `Retry-After` when present, otherwise after `LPCRM_RETRY_DELAY_MS`.
 
 ## MCP Configuration
 
@@ -106,6 +111,8 @@ const statuses = await client.getStatuses();
 const orderIds = await client.getOrderIdsByStatus({ status: 3 });
 const orders = await client.getOrdersById(orderIds.data?.slice(0, 10) ?? []);
 ```
+
+Direct client instances use the same retry and rate-limit defaults as the MCP server. Pass `minRequestIntervalMs`, `maxRetries`, or `retryDelayMs` to tune them; `0` disables the corresponding delay or retry count.
 
 ## Tools
 

@@ -1,3 +1,8 @@
+import {
+  DEFAULT_MAX_RETRIES,
+  DEFAULT_MIN_REQUEST_INTERVAL_MS,
+  DEFAULT_RETRY_DELAY_MS,
+} from './defaults.js';
 import { LpCrmApiError, LpCrmNetworkError } from './errors.js';
 import type {
   GetProductsByIdParams,
@@ -15,6 +20,14 @@ export interface LpCrmClientConfig {
   readonly apiKey: string;
   readonly fetch?: typeof fetch;
   readonly timeout?: number;
+  readonly minRequestIntervalMs?: number;
+  readonly maxRetries?: number;
+  readonly retryDelayMs?: number;
+}
+
+interface LpCrmErrorResponseMeta {
+  readonly body?: unknown;
+  readonly retryAfter?: string | null;
 }
 
 function compactParams(params: Record<string, unknown>): Record<string, string> {
@@ -46,17 +59,62 @@ function messageToString(message: unknown): string {
   return JSON.stringify(message);
 }
 
+function sleep(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function parseRetryAfter(value: string | null | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return seconds * 1000;
+  }
+
+  const date = Date.parse(value);
+  if (Number.isNaN(date)) {
+    return undefined;
+  }
+
+  return Math.max(0, date - Date.now());
+}
+
+function getRetryAfter(error: LpCrmApiError): number | undefined {
+  const response = error.response;
+  if (!response || typeof response !== 'object' || !('retryAfter' in response)) {
+    return undefined;
+  }
+
+  return parseRetryAfter((response as LpCrmErrorResponseMeta).retryAfter);
+}
+
 export class LpCrmClient {
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly fetchFn: typeof fetch;
   private readonly timeout: number;
+  private readonly minRequestIntervalMs: number;
+  private readonly maxRetries: number;
+  private readonly retryDelayMs: number;
+  private requestQueue: Promise<void> = Promise.resolve();
+  private lastRequestStartedAt = 0;
 
   constructor(config: LpCrmClientConfig) {
     this.baseUrl = config.baseUrl.endsWith('/') ? config.baseUrl : `${config.baseUrl}/`;
     this.apiKey = config.apiKey;
     this.fetchFn = config.fetch ?? fetch;
     this.timeout = config.timeout ?? 30000;
+    this.minRequestIntervalMs = config.minRequestIntervalMs ?? DEFAULT_MIN_REQUEST_INTERVAL_MS;
+    this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
+    this.retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   }
 
   async getStatuses(): Promise<LpCrmSuccessResponse<Record<string, string>>> {
@@ -134,6 +192,57 @@ export class LpCrmClient {
     endpoint: string,
     params: Record<string, unknown> = {}
   ): Promise<LpCrmSuccessResponse<T>> {
+    return this.enqueueRequest(() => this.postWithRetries<T>(endpoint, params));
+  }
+
+  private async enqueueRequest<T>(request: () => Promise<T>): Promise<T> {
+    const run = this.requestQueue.then(request);
+    this.requestQueue = run.then(
+      () => undefined,
+      () => undefined
+    );
+
+    return run;
+  }
+
+  private async postWithRetries<T>(
+    endpoint: string,
+    params: Record<string, unknown>
+  ): Promise<LpCrmSuccessResponse<T>> {
+    let attempt = 0;
+
+    while (true) {
+      try {
+        await this.waitForRequestSlot();
+        return await this.postOnce<T>(endpoint, params);
+      } catch (error) {
+        if (
+          error instanceof LpCrmApiError &&
+          error.statusCode === 429 &&
+          attempt < this.maxRetries
+        ) {
+          attempt += 1;
+          await sleep(getRetryAfter(error) ?? this.retryDelayMs);
+          continue;
+        }
+
+        throw error;
+      }
+    }
+  }
+
+  private async waitForRequestSlot(): Promise<void> {
+    const now = Date.now();
+    const elapsed = now - this.lastRequestStartedAt;
+    const waitMs = Math.max(0, this.minRequestIntervalMs - elapsed);
+    await sleep(waitMs);
+    this.lastRequestStartedAt = Date.now();
+  }
+
+  private async postOnce<T>(
+    endpoint: string,
+    params: Record<string, unknown>
+  ): Promise<LpCrmSuccessResponse<T>> {
     const url = new URL(endpoint, this.baseUrl).toString();
     const body = new URLSearchParams({
       key: this.apiKey,
@@ -160,12 +269,20 @@ export class LpCrmClient {
 
       try {
         data = JSON.parse(text) as LpCrmResponse<T>;
-      } catch (error) {
-        throw new LpCrmApiError(`LP-CRM returned non-JSON response: ${text.slice(0, 200)}`, text, response.status);
+      } catch {
+        throw new LpCrmApiError(
+          `LP-CRM returned non-JSON response: ${text.slice(0, 200)}`,
+          { body: text, retryAfter: response.headers.get('retry-after') },
+          response.status
+        );
       }
 
       if (!response.ok) {
-        throw new LpCrmApiError(`HTTP ${response.status}: ${response.statusText}`, data, response.status);
+        throw new LpCrmApiError(
+          `HTTP ${response.status}: ${response.statusText}`,
+          { body: data, retryAfter: response.headers.get('retry-after') },
+          response.status
+        );
       }
 
       if (data.status === 'error') {
