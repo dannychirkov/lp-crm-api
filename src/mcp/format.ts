@@ -1,4 +1,5 @@
 import { logger } from '../logger.js';
+import { LpCrmApiError } from '../errors.js';
 
 export function formatSuccess(data: unknown): {
   content: Array<{ type: 'text'; text: string }>;
@@ -18,6 +19,11 @@ export function formatError(error: unknown): {
   content: Array<{ type: 'text'; text: string }>;
 } {
   const message = error instanceof Error ? error.message : String(error);
+
+  if (error instanceof LpCrmApiError && error.response !== undefined) {
+    // Raw LP-CRM payloads may be large HTML pages: keep them out of normal logs.
+    logger.debug('LP-CRM error response', error.response);
+  }
 
   if (error instanceof Error) {
     logger.error('Tool error', {

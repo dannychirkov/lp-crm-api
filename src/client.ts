@@ -1,9 +1,12 @@
 import {
   DEFAULT_MAX_RETRIES,
+  DEFAULT_MAX_RETRY_DELAY_MS,
   DEFAULT_MIN_REQUEST_INTERVAL_MS,
   DEFAULT_RETRY_DELAY_MS,
+  DEFAULT_TIMEOUT_MS,
 } from './defaults.js';
 import { LpCrmApiError, LpCrmNetworkError } from './errors.js';
+import { assertSecureBaseUrl } from './url.js';
 import type {
   GetProductsByIdParams,
   LpCrmCategory,
@@ -23,6 +26,8 @@ export interface LpCrmClientConfig {
   readonly minRequestIntervalMs?: number;
   readonly maxRetries?: number;
   readonly retryDelayMs?: number;
+  /** Upper bound for any retry delay, including a server-provided Retry-After. */
+  readonly maxRetryDelayMs?: number;
 }
 
 interface LpCrmErrorResponseMeta {
@@ -104,17 +109,24 @@ export class LpCrmClient {
   private readonly minRequestIntervalMs: number;
   private readonly maxRetries: number;
   private readonly retryDelayMs: number;
+  private readonly maxRetryDelayMs: number;
   private requestQueue: Promise<void> = Promise.resolve();
   private lastRequestStartedAt = 0;
 
   constructor(config: LpCrmClientConfig) {
+    assertSecureBaseUrl(config.baseUrl);
+    if (!config.apiKey || !config.apiKey.trim()) {
+      throw new Error('apiKey is required');
+    }
+
     this.baseUrl = config.baseUrl.endsWith('/') ? config.baseUrl : `${config.baseUrl}/`;
     this.apiKey = config.apiKey;
     this.fetchFn = config.fetch ?? fetch;
-    this.timeout = config.timeout ?? 30000;
+    this.timeout = config.timeout ?? DEFAULT_TIMEOUT_MS;
     this.minRequestIntervalMs = config.minRequestIntervalMs ?? DEFAULT_MIN_REQUEST_INTERVAL_MS;
     this.maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
     this.retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+    this.maxRetryDelayMs = config.maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS;
   }
 
   async getStatuses(): Promise<LpCrmSuccessResponse<Record<string, string>>> {
@@ -222,7 +234,7 @@ export class LpCrmClient {
           attempt < this.maxRetries
         ) {
           attempt += 1;
-          await sleep(getRetryAfter(error) ?? this.retryDelayMs);
+          await sleep(Math.min(getRetryAfter(error) ?? this.retryDelayMs, this.maxRetryDelayMs));
           continue;
         }
 
@@ -260,18 +272,33 @@ export class LpCrmClient {
         },
         body,
         signal: abortController.signal,
+        // Never follow redirects: a 307/308 would re-send the API key to another location.
+        redirect: 'manual',
       });
 
-      clearTimeout(timeoutId);
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        throw new LpCrmApiError(
+          `LP-CRM responded with redirect HTTP ${response.status}${
+            location ? ` to ${location}` : ''
+          }; set LPCRM_BASE_URL to the final cabinet URL`,
+          { location },
+          response.status
+        );
+      }
 
+      // Reading the body stays under the same timeout: a server that sends
+      // headers and then stalls must not block the request queue forever.
       const text = await response.text();
       let data: LpCrmResponse<T>;
 
       try {
         data = JSON.parse(text) as LpCrmResponse<T>;
       } catch {
+        // The raw body (often an HTML error page) is kept on the error for
+        // debugging but not put into the message, which is shown to the LLM.
         throw new LpCrmApiError(
-          `LP-CRM returned non-JSON response: ${text.slice(0, 200)}`,
+          `LP-CRM returned non-JSON response (HTTP ${response.status})`,
           { body: text, retryAfter: response.headers.get('retry-after') },
           response.status
         );
@@ -291,8 +318,6 @@ export class LpCrmClient {
 
       return data;
     } catch (error) {
-      clearTimeout(timeoutId);
-
       if (error instanceof LpCrmApiError) {
         throw error;
       }
@@ -306,6 +331,8 @@ export class LpCrmClient {
       }
 
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 }
