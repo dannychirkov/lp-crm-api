@@ -1,12 +1,16 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { createRequire } from 'node:module';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { createLpCrmClient } from '../client.js';
 import { loadConfig, normalizeConfig, validateConfig, type ServerConfig } from '../config.js';
 import { logger, setLogLevel } from '../logger.js';
-import { handleLpCrmTool, lpCrmTools } from './tools.js';
+import { registerLpCrmTools } from './tools.js';
 
-export function createServer(config: ServerConfig): Server {
+const require = createRequire(import.meta.url);
+// Resolves to the package root both from src/mcp (tsx) and dist/mcp (build).
+const { version } = require('../../package.json') as { version: string };
+
+export function createServer(config: ServerConfig): McpServer {
   const normalizedConfig = normalizeConfig(config);
   validateConfig(normalizedConfig);
   setLogLevel(normalizedConfig.logLevel);
@@ -17,31 +21,11 @@ export function createServer(config: ServerConfig): Server {
     maxRetries: normalizedConfig.maxRetries,
     minRequestIntervalMs: normalizedConfig.minRequestIntervalMs,
     retryDelayMs: normalizedConfig.retryDelayMs,
+    maxRetryDelayMs: normalizedConfig.maxRetryDelayMs,
   });
 
-  const server = new Server(
-    {
-      name: 'lp-crm-mcp-server',
-      version: '0.1.0',
-    },
-    {
-      capabilities: {
-        tools: {},
-      },
-    }
-  );
-
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    logger.debug('Listing LP-CRM tools');
-    return { tools: lpCrmTools };
-  });
-
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args = {} } = request.params;
-    logger.info(`Tool called: ${name}`, args);
-
-    return handleLpCrmTool(name, args as Record<string, unknown>, client);
-  });
+  const server = new McpServer({ name: 'lp-crm-mcp-server', version });
+  registerLpCrmTools(server, client);
 
   return server;
 }
@@ -51,8 +35,8 @@ export async function runServer(): Promise<void> {
   const server = createServer(config);
   const transport = new StdioServerTransport();
 
-  logger.info('Starting LP-CRM MCP Server...');
-  logger.info(`Base URL: ${config.baseUrl}`);
+  logger.info(`Starting LP-CRM MCP Server v${version}...`);
+  logger.info(`Base URL: ${new URL(config.baseUrl).origin}`);
   logger.info('Mode: READ-ONLY');
 
   await server.connect(transport);

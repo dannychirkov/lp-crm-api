@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/lp-crm-api.svg)](https://www.npmjs.com/package/lp-crm-api)
 [![License](https://img.shields.io/npm/l/lp-crm-api.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933.svg)](package.json)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D20-339933.svg)](package.json)
 [![TypeScript](https://img.shields.io/badge/TypeScript-ready-3178c6.svg)](https://www.typescriptlang.org/)
 [![MCP](https://img.shields.io/badge/MCP-server-111827.svg)](https://modelcontextprotocol.io/)
 [![Read only](https://img.shields.io/badge/CRM-read--only-0f766e.svg)](#supported-endpoints)
@@ -15,9 +15,11 @@ This package exposes only LP-CRM read endpoints. It is intended for AI assistant
 
 - Typed LP-CRM client for form-encoded API requests.
 - MCP stdio server with read-only tools.
-- No write endpoints.
-- Node.js 18+ and native `fetch`.
-- Unit tests for request formatting, error handling, MCP routing, and read-only tool exposure.
+- No write endpoints; every MCP tool is annotated `readOnlyHint: true`.
+- Strict input validation (zod) for every MCP tool argument.
+- HTTPS-only: the API key is never sent over plain HTTP or to a redirect target.
+- Node.js 20+ and native `fetch`.
+- Unit tests for request formatting, error handling, timeouts, retries, MCP validation, and read-only tool exposure.
 
 ## Supported Endpoints
 
@@ -50,16 +52,19 @@ lp-crm-mcp
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `LPCRM_BASE_URL` | Yes | LP-CRM cabinet URL, for example `https://example.lp-crm.biz` |
+| `LPCRM_BASE_URL` | Yes | LP-CRM cabinet URL, for example `https://example.lp-crm.biz`; must be `https://` |
 | `LPCRM_API_KEY` | Yes | Outgoing/read API key |
 | `LPCRM_MIN_REQUEST_INTERVAL_MS` | No | Minimum delay between LP-CRM requests from one MCP process; default is `1000` |
 | `LPCRM_MAX_RETRIES` | No | Number of retries for LP-CRM HTTP `429` responses; default is `2` |
 | `LPCRM_RETRY_DELAY_MS` | No | Retry delay when LP-CRM omits `Retry-After`; default is `2000` |
+| `LPCRM_MAX_RETRY_DELAY_MS` | No | Upper bound for any retry delay, including `Retry-After`; default is `60000` |
 | `LOG_LEVEL` | No | `debug`, `info`, `warn`, or `error`; default is `info` |
 
 The API key is sent as the LP-CRM `key` form parameter. Do not commit real keys into your repository.
 
-The MCP server serializes LP-CRM requests from one process. If LP-CRM returns HTTP `429`, the client retries after `Retry-After` when present, otherwise after `LPCRM_RETRY_DELAY_MS`.
+The MCP server serializes LP-CRM requests from one process. If LP-CRM returns HTTP `429`, the client retries after `Retry-After` when present, otherwise after `LPCRM_RETRY_DELAY_MS`, doubled on each repeat, and never waits longer than `LPCRM_MAX_RETRY_DELAY_MS`. Each request (including reading the response body) times out after 30 seconds.
+
+Redirects are not followed. If your cabinet URL redirects (for example to `www.`), the error message shows the target; put that final URL into `LPCRM_BASE_URL`.
 
 ## MCP Configuration
 
@@ -87,7 +92,7 @@ With a local checkout:
   "mcpServers": {
     "lp-crm": {
       "command": "node",
-      "args": ["/home/deniswhois/projects/lp-crm-api/dist/cli/index.js"],
+      "args": ["/path/to/lp-crm-api/dist/cli/index.js"],
       "env": {
         "LPCRM_BASE_URL": "https://your-account.lp-crm.biz",
         "LPCRM_API_KEY": "your-read-key"
@@ -112,9 +117,19 @@ const orderIds = await client.getOrderIdsByStatus({ status: 3 });
 const orders = await client.getOrdersById(orderIds.data?.slice(0, 10) ?? []);
 ```
 
-Direct client instances use the same retry and rate-limit defaults as the MCP server. Pass `minRequestIntervalMs`, `maxRetries`, or `retryDelayMs` to tune them; `0` disables the corresponding delay or retry count.
+Direct client instances use the same retry and rate-limit defaults as the MCP server. Pass `minRequestIntervalMs`, `maxRetries`, `retryDelayMs`, `maxRetryDelayMs`, or `timeout` to tune them; `0` disables the corresponding delay or retry count.
+
+The MCP server lives in a separate entry point, so importing the client does not load the MCP SDK:
+
+```ts
+import { createServer, runServer } from 'lp-crm-api/mcp';
+```
 
 ## Tools
+
+All IDs must be numeric (a number or a string of digits). Dates use `YYYY-MM-DD` (optionally `YYYY-MM-DD HH:MM[:SS]`). Invalid arguments are rejected before any request is sent to LP-CRM.
+
+Tools that return lists of order IDs accept an optional `limit` (default `500`, max `5000`). When the list is longer, the response contains the first `limit` IDs plus `truncated: true` and `total_ids`.
 
 ### `lpcrm_get_statuses`
 

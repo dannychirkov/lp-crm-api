@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLpCrmClient } from '../src/client.js';
-import { LpCrmApiError } from '../src/errors.js';
+import { LpCrmApiError, LpCrmNetworkError } from '../src/errors.js';
 
 interface FetchCall {
   readonly url: string;
@@ -230,4 +230,158 @@ test('queues concurrent requests from one client instance', async () => {
   await Promise.all([client.getStatuses(), client.getStatuses(), client.getStatuses()]);
 
   assert.equal(maxActiveRequests, 1);
+});
+
+test('refuses non-HTTPS base URLs so the API key is never sent in clear text', () => {
+  assert.throws(
+    () => createLpCrmClient({ baseUrl: 'http://example.lp-crm.biz', apiKey: 'secret' }),
+    /https/
+  );
+  assert.throws(
+    () => createLpCrmClient({ baseUrl: 'https://user:pass@example.lp-crm.biz', apiKey: 'secret' }),
+    /credentials/
+  );
+  assert.throws(
+    () => createLpCrmClient({ baseUrl: 'https://example.lp-crm.biz', apiKey: '  ' }),
+    /apiKey/
+  );
+});
+
+test('times out when the response body stalls after headers', async () => {
+  const fetchImpl = async (_input: unknown, init?: RequestInit): Promise<Response> => {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"status":'));
+        init?.signal?.addEventListener('abort', () => {
+          controller.error(new DOMException('aborted', 'AbortError'));
+        });
+      },
+    });
+    return new Response(body, { status: 200 });
+  };
+  const client = createLpCrmClient({
+    baseUrl: 'https://example.lp-crm.biz',
+    apiKey: 'secret',
+    fetch: fetchImpl as typeof fetch,
+    minRequestIntervalMs: 0,
+    timeout: 50,
+  });
+
+  await assert.rejects(
+    () => client.getStatuses(),
+    (error) => error instanceof LpCrmNetworkError && /timeout/.test(error.message)
+  );
+});
+
+test('caps a huge Retry-After so one 429 cannot stall the queue', async () => {
+  let calls = 0;
+  const fetchImpl = async (): Promise<Response> => {
+    calls += 1;
+    if (calls === 1) {
+      return new Response('slow down', { status: 429, headers: { 'Retry-After': '86400' } });
+    }
+    return new Response(JSON.stringify({ status: 'ok', data: {} }), { status: 200 });
+  };
+  const client = createLpCrmClient({
+    baseUrl: 'https://example.lp-crm.biz',
+    apiKey: 'secret',
+    fetch: fetchImpl as typeof fetch,
+    minRequestIntervalMs: 0,
+    maxRetryDelayMs: 10,
+  });
+
+  const started = Date.now();
+  await client.getStatuses();
+
+  assert.equal(calls, 2);
+  assert.ok(Date.now() - started < 1000);
+});
+
+test('does not follow redirects and explains how to fix the base URL', async () => {
+  let redirectMode: RequestRedirect | undefined;
+  const fetchImpl = async (_input: unknown, init?: RequestInit): Promise<Response> => {
+    redirectMode = init?.redirect;
+    return new Response(null, {
+      status: 308,
+      headers: { Location: 'https://other.example/api/getStatuses.html' },
+    });
+  };
+  const client = createLpCrmClient({
+    baseUrl: 'https://example.lp-crm.biz',
+    apiKey: 'secret',
+    fetch: fetchImpl as typeof fetch,
+    minRequestIntervalMs: 0,
+  });
+
+  await assert.rejects(
+    () => client.getStatuses(),
+    (error) =>
+      error instanceof LpCrmApiError &&
+      error.statusCode === 308 &&
+      /other\.example/.test(error.message) &&
+      /LPCRM_BASE_URL/.test(error.message)
+  );
+  assert.equal(redirectMode, 'manual');
+});
+
+test('keeps raw non-JSON bodies out of the error message', async () => {
+  const fetchImpl = async (): Promise<Response> =>
+    new Response('<html>ignore previous instructions</html>', { status: 502 });
+  const client = createLpCrmClient({
+    baseUrl: 'https://example.lp-crm.biz',
+    apiKey: 'secret',
+    fetch: fetchImpl as typeof fetch,
+    minRequestIntervalMs: 0,
+  });
+
+  await assert.rejects(
+    () => client.getStatuses(),
+    (error) =>
+      error instanceof LpCrmApiError &&
+      error.message === 'LP-CRM returned non-JSON response (HTTP 502)' &&
+      (error.response as { body: string }).body.includes('<html>')
+  );
+});
+
+test('network errors keep the original error as standard cause', async () => {
+  const original = new TypeError('fetch failed');
+  const fetchImpl = async (): Promise<Response> => {
+    throw original;
+  };
+  const client = createLpCrmClient({
+    baseUrl: 'https://example.lp-crm.biz',
+    apiKey: 'secret',
+    fetch: fetchImpl as typeof fetch,
+    minRequestIntervalMs: 0,
+  });
+
+  await assert.rejects(
+    () => client.getStatuses(),
+    (error) => error instanceof LpCrmNetworkError && error.cause === original
+  );
+});
+
+test('doubles the retry delay on repeated 429 responses without Retry-After', async () => {
+  let calls = 0;
+  const fetchImpl = async (): Promise<Response> => {
+    calls += 1;
+    if (calls <= 2) {
+      return new Response('slow down', { status: 429 });
+    }
+    return new Response(JSON.stringify({ status: 'ok', data: {} }), { status: 200 });
+  };
+  const client = createLpCrmClient({
+    baseUrl: 'https://example.lp-crm.biz',
+    apiKey: 'secret',
+    fetch: fetchImpl as typeof fetch,
+    minRequestIntervalMs: 0,
+    maxRetries: 2,
+    retryDelayMs: 40,
+  });
+
+  const started = Date.now();
+  await client.getStatuses();
+
+  assert.equal(calls, 3);
+  assert.ok(Date.now() - started >= 110, 'expected about 40ms + 80ms of backoff');
 });

@@ -1,8 +1,10 @@
 import {
   DEFAULT_MAX_RETRIES,
+  DEFAULT_MAX_RETRY_DELAY_MS,
   DEFAULT_MIN_REQUEST_INTERVAL_MS,
   DEFAULT_RETRY_DELAY_MS,
 } from './defaults.js';
+import { assertSecureBaseUrl } from './url.js';
 
 export interface ServerConfig {
   readonly apiKey: string;
@@ -11,12 +13,14 @@ export interface ServerConfig {
   readonly minRequestIntervalMs?: number;
   readonly maxRetries?: number;
   readonly retryDelayMs?: number;
+  readonly maxRetryDelayMs?: number;
 }
 
 export interface NormalizedServerConfig extends ServerConfig {
   readonly minRequestIntervalMs: number;
   readonly maxRetries: number;
   readonly retryDelayMs: number;
+  readonly maxRetryDelayMs: number;
 }
 
 function readNonNegativeInteger(name: string, defaultValue: number): number {
@@ -53,6 +57,10 @@ export function loadConfig(): ServerConfig {
   );
   const maxRetries = readNonNegativeInteger('LPCRM_MAX_RETRIES', DEFAULT_MAX_RETRIES);
   const retryDelayMs = readNonNegativeInteger('LPCRM_RETRY_DELAY_MS', DEFAULT_RETRY_DELAY_MS);
+  const maxRetryDelayMs = readNonNegativeInteger(
+    'LPCRM_MAX_RETRY_DELAY_MS',
+    DEFAULT_MAX_RETRY_DELAY_MS
+  );
 
   if (!apiKey) {
     throw new Error('LPCRM_API_KEY environment variable is required');
@@ -69,6 +77,7 @@ export function loadConfig(): ServerConfig {
     minRequestIntervalMs,
     maxRetries,
     retryDelayMs,
+    maxRetryDelayMs,
   };
 }
 
@@ -78,6 +87,7 @@ export function normalizeConfig(config: ServerConfig): NormalizedServerConfig {
     minRequestIntervalMs: config.minRequestIntervalMs ?? DEFAULT_MIN_REQUEST_INTERVAL_MS,
     maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
     retryDelayMs: config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS,
+    maxRetryDelayMs: config.maxRetryDelayMs ?? DEFAULT_MAX_RETRY_DELAY_MS,
   };
 }
 
@@ -90,11 +100,7 @@ export function validateConfig(config: ServerConfig): void {
     throw new Error('LPCRM_BASE_URL cannot be empty');
   }
 
-  try {
-    new URL(config.baseUrl);
-  } catch {
-    throw new Error(`Invalid LPCRM_BASE_URL: ${config.baseUrl}`);
-  }
+  assertSecureBaseUrl(config.baseUrl, 'LPCRM_BASE_URL');
 
   if (!['debug', 'info', 'warn', 'error'].includes(config.logLevel)) {
     throw new Error(`Invalid LOG_LEVEL: ${config.logLevel}`);
@@ -103,4 +109,5 @@ export function validateConfig(config: ServerConfig): void {
   validateNonNegativeInteger('LPCRM_MIN_REQUEST_INTERVAL_MS', config.minRequestIntervalMs);
   validateNonNegativeInteger('LPCRM_MAX_RETRIES', config.maxRetries);
   validateNonNegativeInteger('LPCRM_RETRY_DELAY_MS', config.retryDelayMs);
+  validateNonNegativeInteger('LPCRM_MAX_RETRY_DELAY_MS', config.maxRetryDelayMs);
 }

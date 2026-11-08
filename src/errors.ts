@@ -2,9 +2,10 @@ export class LpCrmError extends Error {
   constructor(
     message: string,
     public readonly code?: string,
-    public readonly statusCode?: number
+    public readonly statusCode?: number,
+    options?: ErrorOptions
   ) {
-    super(message);
+    super(message, options);
     this.name = 'LpCrmError';
     Object.setPrototypeOf(this, LpCrmError.prototype);
   }
@@ -23,11 +24,8 @@ export class LpCrmApiError extends LpCrmError {
 }
 
 export class LpCrmNetworkError extends LpCrmError {
-  constructor(
-    message: string,
-    public readonly cause?: Error
-  ) {
-    super(message, 'NETWORK_ERROR');
+  constructor(message: string, cause?: unknown) {
+    super(message, 'NETWORK_ERROR', undefined, cause === undefined ? undefined : { cause });
     this.name = 'LpCrmNetworkError';
     Object.setPrototypeOf(this, LpCrmNetworkError.prototype);
   }
