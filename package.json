@@ -47,7 +47,7 @@
     "build": "tsc",
     "dev": "tsx src/cli/index.ts",
     "start": "node dist/cli/index.js",
-    "test": "tsx --test test/**/*.test.ts",
+    "test": "tsx --test test/*.test.ts",
     "type-check": "tsc --noEmit",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
     "prepublishOnly": "npm run clean && npm test && npm run build"
