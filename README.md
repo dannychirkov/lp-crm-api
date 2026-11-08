@@ -62,7 +62,7 @@ lp-crm-mcp
 
 The API key is sent as the LP-CRM `key` form parameter. Do not commit real keys into your repository.
 
-The MCP server serializes LP-CRM requests from one process. If LP-CRM returns HTTP `429`, the client retries after `Retry-After` when present, otherwise after `LPCRM_RETRY_DELAY_MS`, and never waits longer than `LPCRM_MAX_RETRY_DELAY_MS`. Each request (including reading the response body) times out after 30 seconds.
+The MCP server serializes LP-CRM requests from one process. If LP-CRM returns HTTP `429`, the client retries after `Retry-After` when present, otherwise after `LPCRM_RETRY_DELAY_MS`, doubled on each repeat, and never waits longer than `LPCRM_MAX_RETRY_DELAY_MS`. Each request (including reading the response body) times out after 30 seconds.
 
 Redirects are not followed. If your cabinet URL redirects (for example to `www.`), the error message shows the target; put that final URL into `LPCRM_BASE_URL`.
 

@@ -234,7 +234,9 @@ export class LpCrmClient {
           attempt < this.maxRetries
         ) {
           attempt += 1;
-          await sleep(Math.min(getRetryAfter(error) ?? this.retryDelayMs, this.maxRetryDelayMs));
+          // LP-CRM sends 429 without Retry-After, so back off exponentially on repeats.
+          const backoffMs = this.retryDelayMs * 2 ** (attempt - 1);
+          await sleep(Math.min(getRetryAfter(error) ?? backoffMs, this.maxRetryDelayMs));
           continue;
         }
 

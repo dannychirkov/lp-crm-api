@@ -360,3 +360,28 @@ test('network errors keep the original error as standard cause', async () => {
     (error) => error instanceof LpCrmNetworkError && error.cause === original
   );
 });
+
+test('doubles the retry delay on repeated 429 responses without Retry-After', async () => {
+  let calls = 0;
+  const fetchImpl = async (): Promise<Response> => {
+    calls += 1;
+    if (calls <= 2) {
+      return new Response('slow down', { status: 429 });
+    }
+    return new Response(JSON.stringify({ status: 'ok', data: {} }), { status: 200 });
+  };
+  const client = createLpCrmClient({
+    baseUrl: 'https://example.lp-crm.biz',
+    apiKey: 'secret',
+    fetch: fetchImpl as typeof fetch,
+    minRequestIntervalMs: 0,
+    maxRetries: 2,
+    retryDelayMs: 40,
+  });
+
+  const started = Date.now();
+  await client.getStatuses();
+
+  assert.equal(calls, 3);
+  assert.ok(Date.now() - started >= 110, 'expected about 40ms + 80ms of backoff');
+});
